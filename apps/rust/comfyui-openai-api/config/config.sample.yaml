@@ -1,0 +1,23 @@
+# Set the loglevel (debug/info/error)
+log_level: "debug"
+
+# Configuration of the server
+server:
+  # Use 0.0.0.0 to expose the app
+  host: "0.0.0.0" 
+  # Port to use 
+  port: 8080
+
+# The configuration of you ComfyUI backend to cover
+vllm_backend:
+  # Where the ComfyUI is deployed
+  host: "http://127.0.0.1"
+  port: 8000
+  
+
+# This configures the request routing
+routing:
+  # Timeout for the backend
+  timeout_seconds: 600
+  # Max payload to accept/transmit
+  max_payload_size_mb: 10

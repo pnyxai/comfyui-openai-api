@@ -1,0 +1,55 @@
+# Docker Compose file to run ComfyUI locally using Docker.
+
+services:
+  comfyui:
+    image: comfyui-local
+    container_name: comfy-ui
+    ports:
+      - 8188:8188
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      # Set up custom nodes folder
+      - ${COMFYUI_FOLDER}/custom_nodes:/comfyui/custom_nodes
+
+      # Set up output image folder
+      - ${COMFYUI_FOLDER}/output:/comfyui/output
+      
+      # Set up models folders
+      - ${COMFYUI_FOLDER}/models/checkpoints:/comfyui/models/checkpoints
+      - ${COMFYUI_FOLDER}/models/clip:/comfyui/models/clip
+      - ${COMFYUI_FOLDER}/models/clip_vision:/comfyui/models/clip_vision
+      - ${COMFYUI_FOLDER}/models/diffusion_models:/comfyui/models/diffusion_models
+      - ${COMFYUI_FOLDER}/models/text_encoders:/comfyui/models/text_encoders
+      - ${COMFYUI_FOLDER}/models/vae:/comfyui/models/vae
+
+      # In case you need to combina two locations
+      # - ./extra_model_paths.yaml:/comfyui/extra_model_paths.yaml
+      # - ${COMFYUI_FOLDER_2}/models:/extras
+
+      
+
+    environment:
+      # Overwrite the container user's UID and GID to match the host's. This
+      # allows files created by ComfyUI to be mounted on the host without
+      # permission issues.
+      - PUID=1000
+      - PGID=1000
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+      # Declare additional Python packages to install. Useful when a custom node
+      # pack does not properly specify all its dependencies or relies on
+      # optional dependencies.
+      # PIP_EXTRA_PACKAGES:
+
+    # Optional: Override the default command. In this case, configure ComfyUI to
+    # listen on all network interfaces (which is required when not using
+    # `network_mode=host`.)
+    command: python ./main.py --listen 0.0.0.0
+
+    restart: no
