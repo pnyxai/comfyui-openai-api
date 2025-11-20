@@ -11,10 +11,12 @@ server:
 # The configuration of you ComfyUI backend to cover
 comfyui_backend:
   # Where the ComfyUI is deployed
-  host: "http://127.0.0.1"
+  host: "127.0.0.1"
   port: 8000
-    # Path to folder containing .json workflows files
+  # Path to folder containing .json workflows files
   workflows_folder: "./workflows"
+  # Client ID to use (some string)
+  client_id: "comfyui-api"
   
 
 # This configures the request routing

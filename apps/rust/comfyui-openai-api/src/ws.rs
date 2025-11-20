@@ -147,10 +147,13 @@ impl WebSocketManager {
         manager: Arc<WebSocketManager>,
     ) {
         loop {
+            debug!("🔄 Waiting for next WebSocket message..."); 
             match read.next().await {
                 Some(Ok(msg)) => {
+                    debug!("📋 Received message type: {:?}", msg); 
                     // Process text messages only
                     if let Message::Text(text) = msg {
+                        debug!("📋 Received WS message: {}",text);
                         // Parse JSON message
                         if let Ok(json) = serde_json::from_str::<Value>(&text) {
                             if let Some(msg_type) = json.get("type").and_then(|v| v.as_str()) {
@@ -199,6 +202,7 @@ impl WebSocketManager {
                 }
             }
         }
+        debug!("❌ Message listener task exited");
     }
 
     /// Waits for a job to complete by polling the completed_jobs buffer

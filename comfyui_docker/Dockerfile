@@ -2,11 +2,14 @@
 # acceleration, file ownership synchronization, custom nodes, and custom node
 # managers.
 
-# Use the recommended Python version 3.12, as specified in the README.
-FROM python:3.12.11-bookworm AS comfyui-base
+# Stage 1: Get Python from official image
+FROM python:3.12.11-bookworm AS python-base
 
-# Install cmake, which is an indirect installation dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends cmake
+# Stage 2: CUDA runtime with Python copied over
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04 AS comfyui-base
+
+# Copy Python from the official Python image
+COPY --from=python-base /usr/local /usr/local
 
 # Create a mount point for user-generated data.
 RUN mkdir -p      \

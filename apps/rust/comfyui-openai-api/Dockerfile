@@ -34,4 +34,7 @@ WORKDIR /app
 # Copy the stripped binary from the builder stage
 COPY --from=builder /usr/local/cargo/bin/comfyui-openai-api ./
 
+# Add example workflows
+COPY workflows /app/workflows
+
 CMD ["./comfyui-openai-api"]
