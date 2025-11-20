@@ -31,6 +31,8 @@ pub struct ComfyUiProxyConfig {
     pub client_id: String,
     /// Path to directory containing workflow JSON files
     pub workflows_folder: String,
+    /// Whether to use or not WebSockets
+    pub use_ws: bool,
 }
 
 /// Request routing and timeout configuration

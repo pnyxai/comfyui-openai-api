@@ -60,6 +60,7 @@ async fn main() {
     info!("   Port: {}", config.comfyui_backend.port);
     info!("   ClientID: {}", config.comfyui_backend.client_id);
     info!("   Workflows Path: {}", config.comfyui_backend.workflows_folder);
+    info!("   Use WebSockets: {}", config.comfyui_backend.use_ws);
     info!("");
     info!("⏱️  Routing Configuration:");
     info!("   Timeout (seconds): {}", config.routing.timeout_seconds);
@@ -80,6 +81,7 @@ async fn main() {
         config.routing.timeout_seconds.into(),
         config.routing.max_payload_size_mb.into(),
         config.comfyui_backend.workflows_folder.into(),
+        config.comfyui_backend.use_ws.into(),
     )
     .await;
 }
@@ -104,6 +106,7 @@ async fn run_server(
     tcp_timeout: u64,
     max_payload_size_mb: usize,
     workflows_config: String,
+    use_ws: bool,
 ) {
     // Create an optimized HTTP/1.1 client for communicating with ComfyUI backend
     // Configuration prioritizes:
@@ -128,6 +131,7 @@ async fn run_server(
 
     // Initialize WebSocket manager for persistent connection to ComfyUI backend
     // This manages the ws://backend:port/ws?clientId=X connection for job completion tracking
+    // TODO : Make tis conditional to `use_ws`
     let ws_manager = match WebSocketManager::new(
         backend_addr.clone(),
         backend_port.clone(),
@@ -168,6 +172,7 @@ async fn run_server(
         backend_client_id: backend_client_id,
         max_payload_size_mb: max_payload_size_mb,
         timeout: tcp_timeout + 10, // Add 10 second buffer to timeout
+        use_ws: use_ws,
         ws_manager,
         workflows,
     });

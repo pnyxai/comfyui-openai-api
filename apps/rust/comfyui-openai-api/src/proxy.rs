@@ -39,6 +39,8 @@ pub struct ProxyState {
     pub timeout: u64,
     /// WebSocket manager for job completion tracking
     pub ws_manager: Arc<WebSocketManager>,
+    /// Whether to use or not WebSockets
+    pub use_ws: bool,
     /// Pre-loaded workflows (workflows) keyed by model name
     pub workflows: Arc<HashMap<String, Value>>,
 }

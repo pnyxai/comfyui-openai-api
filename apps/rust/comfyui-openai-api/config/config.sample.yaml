@@ -17,6 +17,8 @@ comfyui_backend:
   workflows_folder: "./workflows"
   # Client ID to use (some string)
   client_id: "comfyui-api"
+  # Whether to use or not WebSockets backend
+  use_ws: true
   
 
 # This configures the request routing

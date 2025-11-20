@@ -7,7 +7,9 @@
 //! The connection includes automatic reconnection with exponential backoff to handle
 //! temporary network issues or hung connections.
 
+use axum::http::HeaderMap;
 use log::{debug, error, warn};
+use reqwest::Client;
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
@@ -177,8 +179,8 @@ impl WebSocketManager {
                 debug!("🔄 Waiting for next WebSocket message..."); 
                 
                 // Use timeout to detect hung connections that never send data
-                match read.next().await {
-                    Some(Ok(msg)) => {
+                match tokio::time::timeout(Duration::from_secs(60), read.next()).await {
+                    Ok(Some(Ok(msg))) => {
                         // Reset retry state on successful message
                         retry_count = 0;
                         retry_delay = Duration::from_secs(INITIAL_RECONNECT_DELAY_SECS);
@@ -223,14 +225,18 @@ impl WebSocketManager {
                             }
                         }
                     }
-                    Some(Err(e)) => {
+                    Ok(Some(Err(e))) => {
                         // WebSocket error occurred
                         error!("❌ WebSocket error: {}", e);
                         break; // Exit inner loop to trigger reconnection
                     }
-                    None => {
+                    Ok(None) => {
                         // WebSocket connection closed by server
                         error!("❌ WebSocket connection closed by server");
+                        break; // Exit inner loop to trigger reconnection
+                    }
+                    Err(_) => { // Timeout
+                        debug!("🔄 Recycling WebSocket connection");
                         break; // Exit inner loop to trigger reconnection
                     }
                 }
@@ -317,6 +323,8 @@ impl WebSocketManager {
                     return Ok(());
                 }
             }
+           
+
             // Sleep briefly to avoid busy waiting
             // Yields control to other async tasks
             tokio::time::sleep(Duration::from_millis(500)).await;

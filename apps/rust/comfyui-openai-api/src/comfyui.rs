@@ -13,6 +13,7 @@ use log::{debug, error, warn, info};
 use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
+use tokio::time::timeout;
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 use crate::ws::WebSocketManager;
 use base64::{engine::general_purpose, Engine as _};
@@ -286,6 +287,7 @@ pub async fn generations_response(
         upstream_response,
         target_base, 
         headers,
+        state.use_ws,
         &state.client,
         &state.ws_manager,
     )
@@ -325,7 +327,7 @@ async fn create_json_payload(
     if body.is_empty() {
         return Ok(body);
     }
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Parse incoming OpenAI format request as JSON
     let json: Value = serde_json::from_slice(&body)
@@ -490,6 +492,7 @@ async fn handle_regular_response(
     upstream_response: reqwest::Response,
     target_base: String, 
     _headers: HeaderMap,
+    use_ws: bool,
     client: &Client,
     ws_manager: &Arc<WebSocketManager>,
 ) -> Result<AxumResponse, ProxyError> {
@@ -523,10 +526,31 @@ async fn handle_regular_response(
             pid
         );
 
-        // Block until the job completes via WebSocket
-        if let Err(e) = ws_manager.wait_for_job_completion(pid).await {
-            warn!("⚠️ Failed to wait for job completion: {}", e);
-            // Continue anyway - the job might still complete
+        // // Block until the job completes via WebSocket
+        if use_ws {
+            match timeout(Duration::from_secs(600), ws_manager.wait_for_job_completion(pid)).await {
+                Ok(Ok(())) => {},
+                Ok(Err(e)) => warn!("⚠️ Failed to wait for job completion: {}", e),
+                Err(_) => warn!("⚠️ Job completion wait timed out after 600 seconds"),
+            }
+        } else {
+            loop {
+                // Fetch generated images from ComfyUI backend and prepare response
+                let is_done = check_queue(
+                    target_base.clone(),
+                    Some(pid),
+                    headers.clone(),
+                    client,
+                )
+                .await?;
+
+                if is_done {
+                    debug!("⚡ Job {} completed (not found in queue)", pid);
+                    break
+                } 
+
+                tokio::time::sleep(Duration::from_millis(2000)).await;
+            }
         }
     }
 
@@ -773,4 +797,103 @@ async fn retrieve_image_from_history(
        "created": created
    }))
 
+}
+
+
+
+
+async fn check_queue(
+    target_base: String,
+    prompt_id: Option<&str>,
+    headers: HeaderMap,
+    client: &Client,
+) -> Result<bool, ProxyError> {
+
+    // Validate that we have a prompt_id
+    let prompt_id = match prompt_id {
+        Some(id) => id,
+        None => {
+            error!("⚠️ No prompt_id received!");
+            return Err(ProxyError::Upstream(format!(
+                    "No prompt_id received.",
+                )));
+        }
+    };
+
+    // Construct URL to ComfyUI history endpoint
+    let history_url: String = format!("http://{}/queue", target_base);
+
+    debug!("🔍 Checking queue at {}", target_base);
+
+    // Prepare headers for backend requests
+    let mut upstream_headers = reqwest::header::HeaderMap::new();
+
+    // Forward authorization headers if present
+    if let Some(auth) = headers.get("authorization") {
+        if let Ok(auth_value) = reqwest::header::HeaderValue::from_bytes(auth.as_bytes()) {
+            upstream_headers.insert(reqwest::header::AUTHORIZATION, auth_value);
+        }
+    }
+
+    // Log headers for debugging
+    debug!("📋 Headers to send (if any):");
+    for (name, value) in upstream_headers.iter() {
+        debug!("   {}: {}", name, value.to_str().unwrap_or("[unprintable]"));
+    }
+    
+    // Build request to history endpoint
+    let request_builder = client
+        .request(Method::GET, &history_url)
+        .headers(upstream_headers.clone());
+
+    debug!("⏳ Sending queue request to backend...");
+    
+    // Query history with timeout protection
+    let request_future = request_builder.send();
+    let timeout_duration = Duration::from_secs(5);
+
+    let upstream_response = match tokio::time::timeout(timeout_duration, request_future).await {
+        Ok(Ok(response)) => {
+            debug!(
+                "✅ Got response from queue backend: {} - Headers: {:?}",
+                response.status(),
+                response.headers()
+            );
+            response
+        }
+        Ok(Err(e)) => {
+            return Err(handle_request_error(e, &history_url));
+        }
+        Err(_) => {
+            return Err(handle_timeout_error(&history_url, timeout_duration));
+        }
+    };
+
+    // Parse history response
+    let response_body = upstream_response
+        .bytes()
+        .await
+        .map_err(|e| ProxyError::Upstream(format!("Failed to read queu response body: {}", e)))?;
+    let queu_json: Value = serde_json::from_slice(&response_body)
+        .map_err(|e| ProxyError::Json(format!("Failed to queu history JSON: {}", e)))?;
+
+    // Check running
+    if let Some(queue_running) = queu_json.get("queue_running").and_then(|v| v.as_array()){
+
+        for queue_elem in queue_running.iter() {
+            if queue_elem[1] == prompt_id {
+                return Ok(false)
+            }
+        }
+    }
+    // Check pending
+    if let Some(queue_pending) = queu_json.get("queue_pending").and_then(|v| v.as_array()){
+        for queue_elem in queue_pending.iter() {
+            if queue_elem[1] == prompt_id {
+                return Ok(false)
+            }
+        }
+    }
+
+    Ok(true)
 }
