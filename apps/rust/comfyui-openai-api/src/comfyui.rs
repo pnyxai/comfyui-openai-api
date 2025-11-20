@@ -19,6 +19,7 @@ use base64::{engine::general_purpose, Engine as _};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
 use std::path::Path;
+use rand::Rng;
 
 /// Metadata for an image file from ComfyUI output
 ///
@@ -302,8 +303,10 @@ pub async fn generations_response(
 /// - `model` -> workflow name (used to look up workflow JSON)
 /// - `prompt` -> positive prompt text for image generation
 /// - `negative_prompt` -> negative prompt for image generation
+/// - `seed` -> seed for image generation
 /// - `size` -> image dimensions (e.g., "1024x1024" -> width/height)
 /// - `n` -> batch_size (number of images to generate)
+/// 
 ///
 /// # Arguments
 /// * `body` - Raw request body from OpenAI API call
@@ -322,6 +325,7 @@ async fn create_json_payload(
     if body.is_empty() {
         return Ok(body);
     }
+    let mut rng = rand::thread_rng();
 
     // Parse incoming OpenAI format request as JSON
     let json: Value = serde_json::from_slice(&body)
@@ -361,6 +365,28 @@ async fn create_json_payload(
                 for (_node_id, node_data) in workflow_prompt {
                     if let Some(class_type) = node_data["class_type"].as_str() {
                         match class_type {
+                            // Handle seed
+                            "KSampler" => {
+                                if let Some(inputs_data_sampler) = node_data["inputs"].as_object_mut() {
+                                    // Parse seed
+                                    if let Some(seed_data) = openai_request.get("seed").and_then(|v| v.as_i64()) {
+                                        debug!("✏️ Requested seed: {}", seed_data);
+
+                                        inputs_data_sampler.insert(
+                                            "seed".to_string(),
+                                            Value::String(seed_data.to_string()),
+                                        );
+
+                                    } else {
+                                        let random_number: u32 = rng.random_range(0..1_000_000);
+                                        debug!("No seed in JSON, using random seed: {}", random_number);
+                                        inputs_data_sampler.insert(
+                                            "seed".to_string(),
+                                            Value::String(random_number.to_string()),
+                                        );
+                                    }
+                                }   
+                            }
                             // Handle image generation size and batch size
                             "EmptyLatentImage" | "EmptySD3LatentImage" => {
                                 if let Some(inputs_data_size) = node_data["inputs"].as_object_mut() {
